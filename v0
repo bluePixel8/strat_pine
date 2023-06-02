@@ -1,0 +1,449 @@
+// © Infinity_Trading_
+// Last Modified: 3/15/2022
+
+//@version=5
+indicator(title="The Strat Numbers & Combos v2", shorttitle="_Strat v2", overlay=true, max_lines_count=500)
+
+// Purpose: Displays: (1) The Strat candle numbers, (2) The Strat Combo labels and trigger line 
+//          (3) Pivot Machine Gun (PMG) dynamic labels (4) Hammer and Shooter candle labels
+
+
+//------------------------------------
+//  Abbreviations
+//------------------------------------
+
+// BLR = bullish reversal
+// BLC = bullish continuation
+// BRR = bearish reversal
+// BRC = bearish continuation
+// BB  = bars back (bars in the past)
+// Combo = all three bars have formed
+// Setup = the first two bars of a three bar combo before the third bar has formed (before timeframe of third bar)
+// Potential = the first two bars of a three bar combo and the third bar is a one (during timeframe of third bar)
+
+
+//------------------------------------
+//  Hammers & Shooters Key
+//------------------------------------
+
+// Hammer == silver "🔨" (Bearish)
+// Inverted Hammer == silver "⚒️" (Bearish)
+// Shooting Star == gold "🌟" (Bullish)
+// Hanging Man == gold "🪢🙍" (Bullish)
+
+///////////////////////////////////////////////////////////////////////////////// INPUTS
+
+
+i_src = input.source(defval=close, title="Source")
+
+var string GP2 = "Display"
+i_strat_numbers = input.bool(defval=true, title="Display Strat Number Labels", group=GP2)
+i_combo_boxes = input.bool(defval=false, title="Display Strat Combo Boxes", group=GP2)
+i_hammers_shooters = input.bool(defval=true, title="Display Hammer & Shooter Labels", group=GP2)
+i_label_multiplier = input.float(defval=1.5, minval=0.5, title="Label Mov. Multiplier", group=GP2)
+
+
+var string GPL = "Colors & Lines"
+i_bull_color = input.color(defval=color.new(color.yellow, 0), title="   Bullish Lines & Labels", group=GPL) // 
+i_bear_color = input.color(defval=color.rgb(156, 39, 176, 0), title="   Bearish Lines & Labels", group=GPL) // 
+i_other_color = input.color(defval=color.rgb(9, 132, 227, 0), title="   Other Lines & Labels", group=GPL) // electron blue
+
+i_strat_one_color = input.color(defval=color.rgb(255, 225, 0, 15), title="   Strat Number #1", group=GPL) // yellow
+i_strat_two_color = input.color(defval=color.rgb(255, 225, 255, 15), title="   Strat Number #2", group=GPL) // white
+i_strat_three_color = input.color(defval=color.rgb(230, 0, 115, 15), title="   Strat Number #3", group=GPL) // raspberry
+i_box_line_color = input.color(defval=color.rgb(0, 0, 0, 0), title="   Box Line Color", group=GPL) // black
+i_box_line_width = input.int(defval=2, minval=1, title="   Line Width", group=GPL)
+
+// var string GP1 = "Moving Average"
+// i_length = input.int(defval=20, title="Length Days", minval=1, maxval=20, group=GP1)
+// i_mov_avg_function = input.string(defval="SMA", title="Moving Average Function", options=["RMA", "SMA", "EMA", "WMA"], group=GP1)
+i_length = 20
+i_mov_avg_function = "SMA"
+
+///////////////////////////////////////////////////////////////////////////////// FUNCTIONS
+
+// Moving average helper function
+ma_function(source, length) =>
+	switch i_mov_avg_function
+		"RMA" => ta.rma(source, length)
+		"SMA" => ta.sma(source, length)
+		"EMA" => ta.ema(source, length)
+		=> ta.wma(source, length)
+
+///////////////////////////////////////////////////////////////////////////////// Average True Range
+
+
+// Use different moving average functions to calculate ATR
+_atr = ma_function(ta.tr(true), i_length)
+
+
+///////////////////////////////////////////////////////////////////////////////// TheStrat's 1's, 2's, & 3's
+
+// Label each bar a 1, 2, or 3
+
+// https://kodify.net/tradingview/bar-data/close-higher-lower/
+// https://www.pinecoders.com/faq_and_code/
+// https://www.tradingview.com/pine-script-docs/en/v4/annotations/Plotting_shapes_chars_and_arrows.html
+
+// 1's
+ones = (low >= low[1] and high <= high[1])
+
+
+// 2's
+twos = (low < low[1] or high > high[1]) and not (low < low[1] and high > high[1])
+two_up = (high > high[1]) and not (low < low[1] and high > high[1])
+two_up_green = (high > high[1]) and (close > open) and not (low < low[1] and high > high[1])
+two_up_red = (high > high[1]) and (close < open) and not (low < low[1] and high > high[1])
+two_down = (low < low[1]) and not (low < low[1] and high > high[1])
+two_down_red = (low < low[1]) and (close < open) and not (low < low[1] and high > high[1])
+two_down_green = (low < low[1]) and (close > open) and not (low < low[1] and high > high[1])
+
+// 3's
+threes = (low < low[1] and high > high[1])
+three_green = (low < low[1] and high > high[1]) and (close > open)
+three_red = (low < low[1] and high > high[1]) and (close < open)
+
+// 1 - yellow
+plotchar(series = i_strat_numbers ? ones : na, char='1', title="TheStrat Label 1", location=location.belowbar, color=i_strat_one_color)
+// 2 - white
+plotchar(series = i_strat_numbers and twos ? twos : na, char='2', title="TheStrat Label 2", location=location.belowbar, color=i_strat_two_color)
+// 3 - raspberry
+plotchar(series = i_strat_numbers and threes ? threes : na, char='3', title="TheStrat Label 3", location=location.belowbar, color=i_strat_three_color)
+
+
+///////////////////////////////////////////////////////////////////////////////// Strat Combos
+
+
+//------------------------------------
+// Bullish TheStrat Combo Functions
+//------------------------------------
+
+// 2-1-2 Bullish Reversal (BLR)
+// two-down-red; ones; two-up-green
+blr_212_combo = two_down_red[2] and ones[1] and two_up_green
+
+// 2-1-2 Bullish Continuation (BLC)
+// two-up-green; ones; two-green-up
+blc_212_combo = two_up_green[2] and ones[1] and two_up_green
+
+// 3-1-2 Bullish Reversal (BLR)
+// three-red; ones; two-up-green
+blr_312_combo = three_red[2] and ones[1] and two_up_green
+
+// 3-2-2 Bullish Reversal (BLR)
+// three-red; two-down-green; two-up-green
+blr_322_combo = three_red[2] and two_down_green[1] and two_up_green
+
+// Rev Strat 1-2-2 Bullish
+// ones[2]; two-down[1]; low[1] < low[3] (broadening formation); two-up-green
+blr_122_combo = ones[2] and two_down[1] and low[1] < low[3] and two_up_green
+
+// 2-2 Bullish Reversal (BLR)
+blr_22_combo = two_down_red[1] and two_up_green
+
+
+//------------------------------------
+// Bearish TheStrat Combo Functions
+//------------------------------------
+
+// 2-1-2 Bearish Reversal (BRR)
+// two-up-green; ones; two-down-red
+brr_212_combo = two_up_green[2] and ones[1] and two_down_red
+
+// 2-1-2 Bearish Continuation (BRC)
+// two-down-red; ones; two-down-red
+brc_212_combo = two_down_red[2] and ones[1] and two_down_red
+
+// 3-1-2 Bearish Reversal (BRR)
+// three-green; ones; two-down-red
+brr_312_combo = three_green[2] and ones[1] and two_down_red
+
+// 3-2-2 Bearish Reversal (BRR)
+// three-green; two-up-red; two-down-red
+brr_322_combo = three_green[2] and two_up_red[1] and two_down_red
+
+// Rev Strat 1-2-2 Bearish
+// ones[2]; two-up[1]; high[1] > high[3] (broadening formation); two-down-red
+brr_122_combo = ones[2] and two_up[1] and high[1] > high[3] and two_down_red
+
+// 2-2 Bearish Reversal (BRR)
+brr_22_combo = two_up_green[1] and two_down_red
+
+
+
+///////////////////////////////////////////////////////////////////////////////// The Strat Combo Box Labels
+
+
+//------------------------------------
+// Bullish Boxes & Labels
+//------------------------------------
+
+// 2-1-2 Bullish Reversal (BLR)
+plotshape(blr_212_combo, title="2-1-2 BLR", text = "212\nBLR", style=shape.triangleup, location=location.belowbar, color=i_bull_color, textcolor=i_bull_color, offset=-1)
+alertcondition(blr_212_combo, "2-1-2 BLR")
+
+// 2-1-2 Bullish Continuation (BLC)
+plotshape(blc_212_combo, title="2-1-2 BLC", text = "212\nBLC", style=shape.triangleup, location=location.belowbar, color=i_bull_color, textcolor=i_bull_color, offset=-1)
+alertcondition(blc_212_combo, "2-1-2 BLC")
+
+// 3-1-2 Bullish Reversal (BLR)
+plotshape(blr_312_combo, title="3-1-2 BLR", text = "312\nBLR", style=shape.triangleup, location=location.belowbar, color=i_bull_color, textcolor=i_bull_color, offset=-1)
+alertcondition(blr_312_combo, "3-1-2 BLR")
+
+// 3-2-2 Bullish Reversal (BLR)
+plotshape(blr_322_combo, title="3-2-2 BLR", text = "322\nBLR", style=shape.triangleup, location=location.belowbar, color=i_bull_color, textcolor=i_bull_color, offset=-1)
+alertcondition(blr_322_combo, "3-2-2 BLR")
+
+// Rev Strat 1-2-2 Bullish
+plotshape(blr_122_combo, title="Rev Strat 1-2-2 BLR", text = "Rev\nBLR", style=shape.triangleup, location=location.belowbar, color=i_bull_color, textcolor=i_bull_color, offset=-1)
+alertcondition(blr_122_combo, "Rev Strat 1-2-2 BLR")
+
+// 2-2 Bullish Reversal (BLR)
+plotshape(blr_22_combo and not blr_122_combo, title="2-2 BLR", text = "22\nBLR", style=shape.triangleup, location=location.belowbar, color=i_bull_color, textcolor=i_bull_color, offset=-1)
+alertcondition(blr_22_combo and not blr_122_combo, "2-2 BLR")
+
+// Bullish Alerts
+alertcondition(blr_212_combo or blc_212_combo or blr_312_combo or blr_322_combo or blr_122_combo, "BLR and BLC")
+
+// Draw boxes and labels
+
+if blr_212_combo or blc_212_combo or blr_312_combo or blr_322_combo
+    if i_combo_boxes
+        // Draw black box around entire combo
+        box.new(left=bar_index[2], top=high[2], right=bar_index, bottom=low[2], border_color=i_box_line_color, border_width=i_box_line_width, border_style=line.style_solid, bgcolor=color.rgb(255, 225, 255, 100))
+    // Draw line at trigger
+    line.new(x1=bar_index[2], y1=high[1], x2=bar_index, y2=high[1], xloc=xloc.bar_index, color=i_bull_color, style=line.style_solid, width=i_box_line_width)
+
+    
+if blr_122_combo
+    if i_combo_boxes
+        // Draw black box around entire combo
+        box.new(left=bar_index[3], top=high[3], right=bar_index, bottom=low[1], border_color=i_box_line_color, border_width=i_box_line_width, border_style=line.style_solid, bgcolor=color.rgb(255, 225, 255, 100))
+    // Draw line at trigger
+    line.new(x1=bar_index[3], y1=high[1], x2=bar_index, y2=high[1], xloc=xloc.bar_index, color=i_bull_color, style=line.style_solid, width=i_box_line_width)   
+    
+// Don't show 22 BLR inside Rev Strat Bullish
+if blr_22_combo and not blr_122_combo
+    if i_combo_boxes
+        box.new(left=bar_index[2], top=high[2], right=bar_index, bottom=low[1], border_color=i_box_line_color, border_width=i_box_line_width, border_style=line.style_solid, bgcolor=color.rgb(255, 225, 255, 100))
+    // Draw line at trigger
+    line.new(x1=bar_index[2], y1=high[1], x2=bar_index, y2=high[1], xloc=xloc.bar_index, color=i_bull_color, style=line.style_solid, width=i_box_line_width)  
+
+
+//------------------------------------
+// Bearish Boxes & Labels
+//------------------------------------
+
+
+// 2-1-2 Bearish Reversal (BRR)
+plotshape(brr_212_combo, title="2-1-2 BRR", text = "212\nBRR", style=shape.triangledown, location=location.abovebar, color=i_bear_color, textcolor=i_bear_color, offset=-1)
+alertcondition(brr_212_combo, "2-1-2 BRR")
+
+// 2-1-2 Bearish Continuation (BRC)
+plotshape(brc_212_combo, title="2-1-2 BRC", text = "212\nBRC", style=shape.triangledown, location=location.abovebar, color=i_bear_color, textcolor=i_bear_color, offset=-1)
+alertcondition(brc_212_combo, "2-1-2 BRC")
+
+// 3-1-2 Bearish Reversal (BRR)
+plotshape(brr_312_combo, title="3-1-2 BRR", text = "312\nBRR", style=shape.triangledown, location=location.abovebar, color=i_bear_color, textcolor=i_bear_color, offset=-1)
+alertcondition(brr_312_combo, "3-1-2 BRR")
+
+// 3-2-2 Bearish Reversal (BRR)
+plotshape(brr_322_combo, title="3-2-2 BRR", text = "322\nBRR", style=shape.triangledown, location=location.abovebar, color=i_bear_color, textcolor=i_bear_color, offset=-1)
+alertcondition(brr_322_combo, "3-2-2 BRR")
+
+// Rev Strat 1-2-2 Bearish
+plotshape(brr_122_combo, title="Rev Strat 1-2-2 BRR", text = "Rev\nBRR", style=shape.triangledown, location=location.abovebar, color=i_bear_color, textcolor=i_bear_color, offset=-1)
+alertcondition(brr_122_combo, "Rev Strat 1-2-2 BRR")
+
+// 2-2 Bearish Reversal (BRR)
+plotshape(brr_22_combo and not brr_122_combo, title="2-2 BRR", text = "22\nBRR", style=shape.triangledown, location=location.abovebar, color=i_bear_color, textcolor=i_bear_color, offset=-1)
+alertcondition(brr_22_combo and not brr_122_combo, "2-2 BRR")
+
+// Bearish Alerts
+alertcondition(brr_212_combo or brc_212_combo or brr_312_combo or brr_322_combo or brr_122_combo, "BRR and BRC")
+
+
+// Draw boxes and labels
+
+if brr_212_combo or brc_212_combo or brr_312_combo or brr_322_combo
+    if i_combo_boxes
+        // Draw black box around entire combo
+        box.new(left=bar_index[2], top=high[2], right=bar_index, bottom=low[2], border_color=i_box_line_color, border_width=i_box_line_width, border_style=line.style_solid, bgcolor=color.rgb(255, 225, 255, 100))
+    // Draw line at trigger
+    line.new(x1=bar_index[2], y1=low[1], x2=bar_index, y2=low[1], xloc=xloc.bar_index, color=i_bear_color, style=line.style_solid, width=i_box_line_width)
+
+if brr_122_combo
+    if i_combo_boxes
+        // Draw black box around entire combo
+        box.new(left=bar_index[3], top=high[2], right=bar_index, bottom=low[3], border_color=i_box_line_color, border_width=2, border_style=line.style_solid, bgcolor=color.rgb(255, 225, 255, 100))
+    // Draw line at trigger
+    line.new(x1=bar_index[3], y1=low[1], x2=bar_index, y2=low[1], xloc=xloc.bar_index, color=i_bear_color, style=line.style_solid, width=i_box_line_width)
+
+// Don't show 22 BRR inside Rev Strat Bearish
+if brr_22_combo and not brr_122_combo
+    if i_combo_boxes
+        // Draw black box around entire combo
+        box.new(left=bar_index[2], top=high[1], right=bar_index, bottom=low[2], border_color=i_box_line_color, border_width=i_box_line_width, border_style=line.style_solid, bgcolor=color.rgb(255, 225, 255, 100))
+    // Draw line at trigger
+    line.new(x1=bar_index[2], y1=low[1], x2=bar_index, y2=low[1], xloc=xloc.bar_index, color=i_bear_color, style=line.style_solid, width=i_box_line_width)   
+
+
+
+//------------------------------------
+// Double Inside Bars
+//------------------------------------
+
+// double_inside_bars = (low[2] < low[1] and high[2] > high[1]) and ones[1] and ones
+double_inside_bars = ones[1] and ones[0]
+// Only plot shape when double inside bars have stopped occurring (This prevents unncessary plot shapes)
+plotshape(double_inside_bars[1] and not double_inside_bars[0], title="Double Inside", text = "1-1-X", style=shape.xcross, location=location.abovebar, color=i_other_color, textcolor=i_other_color, offset=-2)
+// When a double inside bar occurs, always draw trigger lines
+if double_inside_bars
+    if i_combo_boxes
+        box.new(left=bar_index[2], top=high[2], right=bar_index, bottom=low[2], border_color=i_box_line_color, border_width=i_box_line_width, border_style=line.style_solid, bgcolor=color.rgb(255, 225, 255, 100))
+    line.new(x1=bar_index[2], y1=high[2], x2=bar_index, y2=high[2], xloc=xloc.bar_index, color=i_bull_color, style=line.style_solid, width=i_box_line_width)
+    line.new(x1=bar_index[1], y1=high[1], x2=bar_index, y2=high[1], xloc=xloc.bar_index, color=i_bull_color, style=line.style_solid, width=i_box_line_width)
+    line.new(x1=bar_index[2], y1=low[2], x2=bar_index, y2=low[2], xloc=xloc.bar_index, color=i_bear_color, style=line.style_solid, width=i_box_line_width)
+    line.new(x1=bar_index[1], y1=low[1], x2=bar_index, y2=low[1], xloc=xloc.bar_index, color=i_bear_color, style=line.style_solid, width=i_box_line_width)
+
+
+//------------------------------------
+// Pivot Machine Gun (PMG)
+//------------------------------------
+
+// pivot machine guyn is 5 or more consecutive higher lows or lower highs on any time frame
+pivot_down_red = (high[1] > high) and (close < open) and not (low < low[1] and high > high[1])
+pivot_up_green = (low[1] < low) and (close > open) and not (low < low[1] and high > high[1])
+
+// Dynamic PMG Bullish Reversal
+
+// Default values
+pmg_bull_dynamic_counter = 0
+pmg_bull_start_bar = 0
+// Loop over last 12 bars and check if conidtions meet PMG criteria
+for i = 0 to 12
+    if pivot_down_red[i]
+        pmg_bull_dynamic_counter := pmg_bull_dynamic_counter + 1
+    else
+        break
+    // If a PMG has occurred, start tracking the start bar number
+    if pmg_bull_dynamic_counter == 4
+        pmg_bull_start_bar := 4
+    if pmg_bull_dynamic_counter > 4
+        pmg_bull_start_bar := pmg_bull_start_bar + 1
+
+
+// Default box value
+box bx_bl = na
+line ln_bl = na
+
+plotshape(pmg_bull_dynamic_counter >= 4, title="PMG BLR", text = "PMG BLR", style=shape.arrowup, location=location.abovebar, color=i_bull_color)
+// Only draw if PMG Bear has occured
+if pmg_bull_dynamic_counter >= 4
+
+    // Delete previous PMG box (if there was one)
+    if pmg_bull_start_bar >= 5
+        box.delete(bx_bl[1])
+        // Delete previous PMG lines
+        for y = 1 to pmg_bull_start_bar
+            line.delete(ln_bl[y])
+    
+    // Draw box outside of entire 5 bar PMG
+    bx_bl := box.new(left=bar_index[pmg_bull_start_bar], top=high[pmg_bull_start_bar], right=bar_index, bottom=low, border_color=i_box_line_color, border_width=i_box_line_width, border_style=line.style_solid, bgcolor=color.rgb(255, 225, 255, 100))
+    // Draw horizontal high lines
+    // Draw horizontal lines on high from beginning of PMG bar
+    for x = 1 to pmg_bull_start_bar
+        ln_bl := line.new(x1=bar_index[x], y1=high[x], x2=bar_index, y2=high[x], xloc=xloc.bar_index, color=i_bull_color, style=line.style_solid, width=i_box_line_width)
+
+
+
+
+// Dynamic PMG Bearish Reversal
+
+// Default values
+pmg_bear_dynamic_counter = 0
+pmg_start_bar = 0
+// Loop over last 12 bars and check if conidtions meet PMG criteria
+for i = 0 to 12
+    if pivot_up_green[i]
+        pmg_bear_dynamic_counter := pmg_bear_dynamic_counter + 1
+    else
+        break
+    // If a PMG has occurred, start tracking the start bar number
+    if pmg_bear_dynamic_counter == 4
+        pmg_start_bar := 4
+    if pmg_bear_dynamic_counter > 4
+        pmg_start_bar := pmg_start_bar + 1
+    
+
+// Default box value
+box bx = na
+line ln = na
+
+plotshape(pmg_bear_dynamic_counter >= 4, title="PMG BRR", text = "PMG BRR", style=shape.arrowdown, location=location.abovebar, color=i_bear_color)
+// Only draw if PMG Bear has occured
+if pmg_bear_dynamic_counter >= 4
+
+    // Delete previous PMG box (if there was one)
+    if pmg_start_bar >= 5
+        box.delete(bx[1])
+        // Delete previous PMG lines
+        for y = 1 to pmg_start_bar
+            line.delete(ln[y])
+    
+    // Draw box outside of entire 5 bar PMG
+    bx := box.new(left=bar_index[pmg_start_bar], top=high, right=bar_index, bottom=low[pmg_start_bar], border_color=i_box_line_color, border_width=i_box_line_width, border_style=line.style_solid, bgcolor=color.rgb(255, 225, 255, 100))
+    // Draw horizontal low lines
+    // Draw horizontal lines on lows from beginning of PMG bar
+    for x = 1 to pmg_start_bar
+        ln := line.new(x1=bar_index[x], y1=low[x], x2=bar_index, y2=low[x], xloc=xloc.bar_index, color=i_bear_color, style=line.style_solid, width=i_box_line_width)
+        
+
+
+///////////////////////////////////////////////////////////////////////////////// HAMMERS & SHOOTERS
+
+//------------------------------------
+// Candle Logic
+//------------------------------------
+
+bodySize = math.abs(open - close)
+
+topCandleWick = close > open ? math.abs(high - close) : math.abs(high - open)
+bottomCandleWick = close > open ? math.abs(low - open) : math.abs(low - close)
+
+
+//------------------------------------
+// Hammers & Shooters Logic
+//------------------------------------
+
+// Bullish
+
+// Hammer
+// https://commodity.com/technical-analysis/hammer/
+hammerCandle = two_down and (bottomCandleWick >= bodySize * 3) and (topCandleWick <= bodySize)
+if hammerCandle and i_hammers_shooters
+    label.new(x=bar_index, y=low - _atr * i_label_multiplier, text="🔨", style=label.style_label_up, color=color.rgb(255, 166, 81, 0))
+
+// Inverted Hammer
+// https://commodity.com/technical-analysis/inverted-hammer/
+invertedHammer = two_down and (topCandleWick >= bodySize * 3) and (bottomCandleWick <= bodySize)
+if invertedHammer and i_hammers_shooters
+    label.new(x=bar_index, y=low - _atr * i_label_multiplier, text="⚒️", style=label.style_label_up, color=color.rgb(255, 166, 81, 0))
+
+// Bearish
+
+// Shooting Star
+// https://tradingsim.com/blog/shooting-star/
+// https://commodity.com/technical-analysis/shooting-star/
+shootingStarCandle = two_up and (topCandleWick >= bodySize * 3) and (bottomCandleWick <= bodySize)
+if shootingStarCandle and i_hammers_shooters
+    // https://emojipedia.org/glowing-star/
+    label.new(x=bar_index, y=high + _atr * i_label_multiplier, text="🌟", style=label.style_label_down, color=color.rgb(153, 170, 181, 0))
+
+// Hanging Man
+// https://commodity.com/technical-analysis/hanging-man/
+hangingManCandle = two_up and (bottomCandleWick >= bodySize * 3) and (topCandleWick <= bodySize)
+if hangingManCandle and i_hammers_shooters
+    label.new(x=bar_index, y=high + _atr * i_label_multiplier, text="🪢🙍", style=label.style_label_down, color=color.rgb(153, 170, 181, 0))
+
+
